@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../Gaussian_Puff"
+		},
+		{
+			"path": "../UCAR_reanalysis"
+		}
+	],
+	"settings": {}
+}
