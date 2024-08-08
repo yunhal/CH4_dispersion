@@ -24,7 +24,9 @@ from datetime import timedelta
 from math import sqrt
 from pyproj import Transformer
 import pandas as pd
-
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import LinearSegmentedColormap
 
 def convert_utm_to_latlon_df(df, easting_col, northing_col, zone, northern=True):
 # This doesn't work somehow
@@ -42,10 +44,9 @@ def convert_utm_to_latlon_df(df, easting_col, northing_col, zone, northern=True)
     return df
 
 def calculate_end_time(start_time, chunk_size_minutes, n_chunks):
-    # Calculate the total duration to be added to the start time
+
+    # Calculate the total duration to be added to the start time based on n_chunks and chunk_size
     total_duration = timedelta(minutes=chunk_size_minutes * n_chunks)
-    
-    # Compute end time by adding total duration to the start time
     end_time = start_time + total_duration
     
     return end_time
@@ -67,11 +68,7 @@ def latlon_to_utm(latitude, longitude):
     
     # Define the UTM CRS based on the zone and hemisphere
     utm_crs = CRS(proj='utm', zone=zone_number, datum='WGS84', south=(hemisphere == 'south'))
-    
-    # Define the projection transformation
     project = Proj(utm_crs)
-    
-    # Convert latitude and longitude to UTM
     easting, northing = project(longitude, latitude)
     
     zone_letter = 'N' if latitude >= 0 else 'S'
@@ -152,7 +149,7 @@ def compute_sigma_vals(stab_classes, total_dist):
     for stab_class in np.unique(stab_classes):
         class_sigma_y = np.zeros_like(total_dist)
         class_sigma_z = np.zeros_like(total_dist)
-        # Find the relevant parameter set based on distance limits
+
         for i, (limit, a, b, c, d) in enumerate(params[stab_class]):
             if i == 0:  # First limit applies to all distances up to that limit
                 mask = (total_dist <= limit) 
@@ -178,6 +175,7 @@ def compute_sigma_vals(stab_classes, total_dist):
     return sigma_y_vals, sigma_z_vals
 
 def gpuff(Q, stab_class, x_p, y_p, x_r_vec, y_r_vec, z_r_vec, total_dist, H):
+
     """Calculate the contaminant concentration using the Gaussian puff model."""
     conversion_factor = 1e6 * 1.524
     total_dist_km = total_dist / 1000
@@ -201,14 +199,9 @@ def gpuff(Q, stab_class, x_p, y_p, x_r_vec, y_r_vec, z_r_vec, total_dist, H):
 def process_chunk(args):
     h, chunk_size, dt, n_ints, source_x, source_y, source_z, WS_x, WS_y, WS, Q_truth, grid_x, grid_y, grid_z, times = args
 
-
-
     chunk_start = int(h * chunk_size * 60 / dt)
     chunk_end = int(min((h + 1) * chunk_size * 60 / dt, n_ints))
-    print("debug process_chunk", h, chunk_size, dt, n_ints,  chunk_start, chunk_end)
     chunk_concentrations = np.zeros((chunk_end - chunk_start, grid_x.shape[0], grid_y.shape[1], grid_z.shape[2]))
-
-
 
     for j in range(chunk_start, chunk_end):
         current_time = times[0] + timedelta(seconds=(chunk_start + j) * dt)
@@ -228,14 +221,11 @@ def process_chunk(args):
 
     return chunk_concentrations
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colors import LinearSegmentedColormap
+
 
 def plot_3d_concentration(big_C, times):
     time_steps = big_C.shape[0]
-    
-    # Create a custom colormap
+
     colors = ["white", "red"]  # White to red
     cmap = LinearSegmentedColormap.from_list("custom_red", colors, N=256)
 
@@ -280,7 +270,6 @@ def plot_3d_concentration(big_C, times):
 def plot_2d_concentration(big_C, times):
     time_steps = big_C.shape[0]
     
-    # Create a custom colormap from white to red
     colors = ["white", "red"]  # white for low concentrations, red for high
     cmap = LinearSegmentedColormap.from_list("custom_red", colors, N=256)
     
@@ -289,8 +278,8 @@ def plot_2d_concentration(big_C, times):
             print(f"Plotting time step {t}")
             fig, ax = plt.subplots()
 
-            # Sum over the Z-axis (adjust axis index if different in your data structure)
-            C_t_summed = np.sum(big_C[t], axis=2)  # Assuming the third axis is the vertical one to sum over
+            # Sum over the Z-axis
+            C_t_summed = np.sum(big_C[t], axis=2) 
 
             # Create the heatmap
             c = ax.imshow(C_t_summed, cmap=cmap, origin='lower', aspect='auto')
@@ -307,14 +296,8 @@ def plot_2d_concentration(big_C, times):
 
 def plot_2d_concentration_from_df(df):
     
-    # Create a custom colormap from white to red
     colors = ["white", "red"]  # white for low concentrations, red for high
     cmap = LinearSegmentedColormap.from_list("custom_red", colors, N=256)
-    
-    
-    # Convert coordinates if necessary (uncomment and adjust if needed)
-    # df['lon'] = df['lon'] / 100000  # Convert projected coordinates to longitude (example)
-    # df['lat'] = df['lat'] / 100000  # Convert projected coordinates to latitude (example)
 
     # subset key columns
     df = df [["times", "lat", "lon", "height", "Value"]]
@@ -323,7 +306,6 @@ def plot_2d_concentration_from_df(df):
     df_mean = df.groupby(['times', 'lat', 'lon'])['Value'].sum().reset_index()
     print(df_mean.head(), df_mean.shape)
 
-    # Extract unique times
     times = df_mean['times'].unique()
     
     for t in times:
@@ -344,28 +326,24 @@ def plot_2d_concentration_from_df(df):
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
 
-        # Add a color bar
         cbar = fig.colorbar(heatmap, ax=ax)
-        #cbar.set_ticks(np.linspace(0, 10, 11))  # Optionally set specific tick marks
+        #cbar.set_ticks(np.linspace(0, 10, 11)) 
         cbar.set_label('Averaged Concentration (units)')
 
-        # Display the plot
         plt.show()
 
 import plotly.graph_objects as go
 
 def plot_3d_concentration_with_slider(big_C, times):
-    # Create a figure object
+
     fig = go.Figure()
 
-    # Generate grid only once if the dimensions are constant across all time steps
     grid_shape = big_C[0].shape
     X, Y, Z = np.meshgrid(np.arange(grid_shape[0]), np.arange(grid_shape[1]), np.arange(grid_shape[2]), indexing='ij')
     X = X.flatten()
     Y = Y.flatten()
     Z = Z.flatten()
 
-    # Initialize the first frame and set up subsequent frames
     frames = []
     for t, C_t in enumerate(big_C):
         C_t_flat = C_t.flatten()
@@ -470,7 +448,8 @@ def plot_3d_concentration_with_slider(big_C, times):
 
 
 def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_index, source_locs, area_size,height_levels):
-    # Assume big_C shape is (time_steps, grid_x, grid_y, grid_z)
+
+
     time_steps, grid_x_size, grid_y_size, grid_z_size = big_C.shape
     print("big_C shape", big_C.shape)
     
@@ -481,7 +460,7 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_inde
     indices = np.unravel_index(np.arange(flat_big_C.size), big_C.shape)
     print(indices[0])
 
-    # Create a DataFrame
+    # Create a DataFrame based on known dimensions
     df = pd.DataFrame({
         'Value': flat_big_C,
         'time_index': indices[0],
@@ -490,7 +469,7 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_inde
         'height_index': indices[3]
     })
 
-    # Source location and conversion to UTM
+    # This part must be inherited from previous step. 
     source_lat = source_locs.iloc[source_index]['lat']
     source_lon = source_locs.iloc[source_index]['lon']
     source_x, source_y = latlon_to_utm(source_lat, source_lon)
@@ -502,8 +481,8 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_inde
     
     print("debug grids", grid_x[0, 0:9, 0])
 
-    # Update the DataFrame with the 'lon' values based on the 'lon_index'
-    df['lon'] = df['lon_index'].apply(lambda x: grid_x[0, x, 0])  # grid_x[lat_index, lon_index, height_index]
+    # Fill the dataframe with actual grid values based on the 'grid_index'
+    df['lon'] = df['lon_index'].apply(lambda x: grid_x[0, x, 0])  # IMPORTANT: grid_x[lat_index, lon_index, height_index]
     df['lat'] = df['lat_index'].apply(lambda x: grid_y[x, 0, 0])
     df['height'] = df['height_index'].apply(lambda x: grid_z[0, 0, x])
     df['times'] = df['time_index'].apply(lambda x: times[x])
@@ -513,7 +492,6 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_inde
     print("unique", df['lon'].unique())
     print("unique", df['height'].unique())
 
-    # Set 'times' as index
     df.set_index('times', inplace=True)
 
     print("final df ", df.head())
