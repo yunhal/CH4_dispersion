@@ -453,7 +453,7 @@ def plot_3d_concentration_with_slider(big_C, times):
 def average_time_resolution(big_C, times, output_dt_sec, output_dir,  grid_x, grid_y, grid_z):
 
     time_steps, grid_x_size, grid_y_size, grid_z_size = big_C.shape
-    #("big_C shape", big_C.shape)
+    ("big_C shape", big_C.shape)
     
     # Flatten the array
     flat_big_C = big_C.ravel()
@@ -470,8 +470,6 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir,  grid_x, gr
         'lat_index': indices[2],
         'height_index': indices[3]
     })
-    
-    #print("debug grids", grid_x[0, 0:9, 0])
 
     # Fill the dataframe with actual grid values based on the 'grid_index'
     df['lon'] = df['lon_index'].apply(lambda x: grid_x[x, 0, 0])  
@@ -480,14 +478,22 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir,  grid_x, gr
     df['times'] = df['time_index'].apply(lambda x: times[x])
     df['times'] = pd.to_datetime(df['times'])
 
+    # Subset df 
+    df = df [['lon', 'lat', 'height','Value','times']]
+
     df.set_index('times', inplace=True)
 
-    #print("final df ", df.head())
+    print("df shape ", df.shape)
 
     # Resample and average only the 'Value' column while keeping the grid information
-    resampled_df = df.groupby([pd.Grouper(freq=f'{output_dt_sec}s'), 'lon_index', 'lat_index', 'time_index', 'height_index', 'lon', 'lat', 'height']).mean().reset_index()
+    resampled_df = df.groupby(
+        [pd.Grouper(freq=f'{output_dt_sec}s'), 'lon', 'lat', 'height']
+    ).mean().reset_index()
 
-    #print("final resampled_df ", resampled_df.head())
+    # The 'time_index' no longer exists in the resampled_df since it's grouped by the new time intervals
+    resampled_df['times'] = resampled_df['times'].dt.round(f'{output_dt_sec}s')
+
+    print("final resampled_df shape", resampled_df.shape)
 
     output_filename = f'{output_dir}simulation_output_resampled_at_{output_dt_sec}sec.csv'
     resampled_df.to_csv(output_filename, index=False)
