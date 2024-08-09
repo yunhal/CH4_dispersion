@@ -12,7 +12,8 @@ __all__ = [
     'plot_3d_concentration_with_slider',
     'calculate_end_time',
     'average_time_resolution',
-    'convert_utm_to_latlon_df'
+    'convert_utm_to_latlon_df',
+    'simulate_puff_concentration'
 ]
 
 
@@ -27,6 +28,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import LinearSegmentedColormap
+from multiprocessing import Pool
 
 def convert_utm_to_latlon_df(df, easting_col, northing_col, zone, northern=True):
 # This doesn't work somehow
@@ -203,9 +205,11 @@ def process_chunk(args):
     chunk_end = int(min((h + 1) * chunk_size * 60 / dt, n_ints))
     chunk_concentrations = np.zeros((chunk_end - chunk_start, grid_x.shape[0], grid_y.shape[1], grid_z.shape[2]))
 
+    print("check chunk_concentration dimensions", chunk_concentrations.shape, chunk_start,chunk_end)
+
     for j in range(chunk_start, chunk_end):
         current_time = times[0] + timedelta(seconds=(chunk_start + j) * dt)
-        stab_class = get_stab_class(WS[j], current_time)
+        stab_class = get_stab_class(WS.iloc[j], current_time)
         #print("debug process_chunk", WS[j], current_time, stab_class)
 
         for k in range(1, min(j - chunk_start, 300)+1):
@@ -274,7 +278,7 @@ def plot_2d_concentration(big_C, times):
     cmap = LinearSegmentedColormap.from_list("custom_red", colors, N=256)
     
     for t in range(time_steps):
-        if t % 60 == 0:
+        if t % 300 == 0:
             print(f"Plotting time step {t}")
             fig, ax = plt.subplots()
 
@@ -282,7 +286,7 @@ def plot_2d_concentration(big_C, times):
             C_t_summed = np.sum(big_C[t], axis=2) 
 
             # Create the heatmap
-            c = ax.imshow(C_t_summed, cmap=cmap, origin='lower', aspect='auto')
+            c = ax.imshow(C_t_summed, cmap=cmap, origin='lower', aspect='auto', vmin=0)
             ax.set_title(f'Concentration at time {times[t]}')
             ax.set_xlabel('Longitude Index')
             ax.set_ylabel('Latitude Index')
@@ -304,7 +308,6 @@ def plot_2d_concentration_from_df(df):
 
     # Calculate mean values
     df_mean = df.groupby(['times', 'lat', 'lon'])['Value'].sum().reset_index()
-    print(df_mean.head(), df_mean.shape)
 
     times = df_mean['times'].unique()
     
@@ -321,7 +324,7 @@ def plot_2d_concentration_from_df(df):
         grid_x, grid_y = np.meshgrid(pivot_table.columns, pivot_table.index)
 
         # Create the heatmap using pcolormesh
-        heatmap = ax.pcolormesh(grid_x, grid_y, pivot_table, cmap=cmap, shading='auto') #, vmin=0, vmax=10)
+        heatmap = ax.pcolormesh(grid_x, grid_y, pivot_table, cmap=cmap, shading='auto', vmin=0) #, vmin=0, vmax=10)
         ax.set_title(f'Concentration at {pd.to_datetime(t)}')
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
@@ -447,18 +450,17 @@ def plot_3d_concentration_with_slider(big_C, times):
     return fig
 
 
-def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_index, source_locs, area_size,height_levels):
-
+def average_time_resolution(big_C, times, output_dt_sec, output_dir,  grid_x, grid_y, grid_z):
 
     time_steps, grid_x_size, grid_y_size, grid_z_size = big_C.shape
-    print("big_C shape", big_C.shape)
+    #("big_C shape", big_C.shape)
     
     # Flatten the array
     flat_big_C = big_C.ravel()
 
     # Get the multi-dimensional indices
     indices = np.unravel_index(np.arange(flat_big_C.size), big_C.shape)
-    print(indices[0])
+    #print(indices[0])
 
     # Create a DataFrame based on known dimensions
     df = pd.DataFrame({
@@ -468,40 +470,56 @@ def average_time_resolution(big_C, times, output_dt_sec, output_dir, source_inde
         'lat_index': indices[2],
         'height_index': indices[3]
     })
-
-    # This part must be inherited from previous step. 
-    source_lat = source_locs.iloc[source_index]['lat']
-    source_lon = source_locs.iloc[source_index]['lon']
-    source_x, source_y = latlon_to_utm(source_lat, source_lon)
-
-    # Define a 3D grid or area over which to calculate concentration
-    grid_x, grid_y, grid_z = np.meshgrid(np.linspace(source_x-area_size/2, source_x+area_size/2, num=30),
-                                         np.linspace(source_y-area_size/2, source_y+area_size/2, num=30),
-                                         np.linspace(0, source_locs.iloc[source_index]['height'] + height_levels, num=10))  
     
-    print("debug grids", grid_x[0, 0:9, 0])
+    #print("debug grids", grid_x[0, 0:9, 0])
 
     # Fill the dataframe with actual grid values based on the 'grid_index'
-    df['lon'] = df['lon_index'].apply(lambda x: grid_x[0, x, 0])  # IMPORTANT: grid_x[lat_index, lon_index, height_index]
-    df['lat'] = df['lat_index'].apply(lambda x: grid_y[x, 0, 0])
+    df['lon'] = df['lon_index'].apply(lambda x: grid_x[x, 0, 0])  
+    df['lat'] = df['lat_index'].apply(lambda x: grid_y[0, x, 0])
     df['height'] = df['height_index'].apply(lambda x: grid_z[0, 0, x])
     df['times'] = df['time_index'].apply(lambda x: times[x])
     df['times'] = pd.to_datetime(df['times'])
 
-    print("unique", df['lat'].unique())
-    print("unique", df['lon'].unique())
-    print("unique", df['height'].unique())
-
     df.set_index('times', inplace=True)
 
-    print("final df ", df.head())
+    #print("final df ", df.head())
 
     # Resample and average only the 'Value' column while keeping the grid information
     resampled_df = df.groupby([pd.Grouper(freq=f'{output_dt_sec}s'), 'lon_index', 'lat_index', 'time_index', 'height_index', 'lon', 'lat', 'height']).mean().reset_index()
 
-    print("final resampled_df ", resampled_df.head())
+    #print("final resampled_df ", resampled_df.head())
 
     output_filename = f'{output_dir}simulation_output_resampled_at_{output_dt_sec}sec.csv'
     resampled_df.to_csv(output_filename, index=False)
 
     return resampled_df
+
+def simulate_puff_concentration(source_x, source_y, source_z, grid_x, grid_y, grid_z,  data, dt, emission_rate, times, chunk_size, n_chunks):
+
+    # Wind data and interpolation
+    WS_x = data['u_wind']
+    WS_y = data['v_wind']
+    WA = data['wind_direction']
+    WA_x = np.cos(WA)
+    WA_y = np.sin(WA)
+    WS = np.sqrt(WS_x**2 + WS_y**2)
+
+    # Emission rates
+    Q_truth = np.full((len(WS)), emission_rate)
+
+    # Setup chunk processing
+    n_ints = len(WS) # ignore the last time 
+
+    args = [(h, chunk_size, dt, n_ints, source_x, source_y, source_z, WS_x, WS_y, WS, Q_truth, grid_x, grid_y, grid_z, times) 
+            for h in range(n_chunks)]
+
+    print(f"chunk_size: {chunk_size}, n_chunks: {n_chunks}, dt: {dt}, n_ints: {n_ints}, "
+      f"source_x: {source_x}, source_y: {source_y}, source_z: {source_z}, "
+      f"WS_x length: {len(WS_x)}, WS length: {len(WS)}, Q_truth: {Q_truth[0]}, ")
+
+    with Pool(processes=n_chunks) as pool:
+        results = pool.map(process_chunk, args)
+        #print("result", results)
+
+    big_C = np.vstack(results)
+    return big_C
