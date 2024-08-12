@@ -1,7 +1,9 @@
+NEI_CH4/SMOKE_flat/
 code/__pycache__/
 code/no_need/
 input_data/no_need
 .DS_Store
 */.DS_Store
 output_data/
+methaneDART.code-workspace
 .Rhistory
