@@ -239,7 +239,7 @@ def plot_2d_concentration(big_C, times):
             C_t_summed = np.sum(big_C[t], axis=2) 
 
             # Create the heatmap
-            c = ax.imshow(C_t_summed, cmap=cmap, origin='lower', aspect='auto', vmin=0)
+            c = ax.imshow(C_t_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0)
             ax.set_title(f'Concentration at time {times[t]}')
             ax.set_xlabel('Longitude Index')
             ax.set_ylabel('Latitude Index')
@@ -251,28 +251,28 @@ def plot_2d_concentration(big_C, times):
             # Display the plot
             plt.show()
 
-            # Extract the center slice along the first dimension 
-            center_pt = big_C[t].shape[0] // 2
-            center_slice = big_C[center_pt,:, :, t]
+            # # Extract the center slice along the first dimension 
+            # center_pt = big_C[t].shape[0] // 2
+            # center_slice = big_C[center_pt,:, :, t]
 
-            print(center_slice.shape)  # Should print (20, 10)
+            # print(center_slice.shape)  # Should print (20, 10)
 
-            # Create the plot
-            fig, ax = plt.subplots()
+            # # Create the plot
+            # fig, ax = plt.subplots()
 
-            # Plotting with y on the x-axis and z on the y-axis
-            c = ax.imshow(center_slice.T, cmap=cmap, origin='lower', aspect='auto', vmin=0)
+            # # Plotting with y on the x-axis and z on the y-axis
+            # c = ax.imshow(center_slice.T, cmap=cmap, origin='lower', aspect='auto', vmin=0)
 
-            ax.set_title('Concentration at Source Location')
-            ax.set_xlabel('Latitude Index (y)')
-            ax.set_ylabel('Height Index (z)')
+            # ax.set_title('Concentration at Source Location')
+            # ax.set_xlabel('Latitude Index (y)')
+            # ax.set_ylabel('Height Index (z)')
 
-            # Add a color bar
-            cbar = fig.colorbar(c, ax=ax)
-            cbar.set_label('Plume Concentration (ug m-3)')
+            # # Add a color bar
+            # cbar = fig.colorbar(c, ax=ax)
+            # cbar.set_label('Plume Concentration (ug m-3)')
 
-            # Display the plot
-            plt.show()
+            # # Display the plot
+            # plt.show()
 
 def plot_2d_concentration_from_df(df):
     
@@ -435,7 +435,7 @@ def plot_2d_plume_concentration(big_C):
     C_summed = np.mean(big_C, axis=2)
 
     # Create the heatmap
-    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=300)
+    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=1000)
     ax.set_title('Concentration')
     ax.set_xlabel('Longitude Index')
     ax.set_ylabel('Latitude Index')
@@ -451,7 +451,7 @@ def plot_2d_plume_concentration(big_C):
     fig, ax = plt.subplots()
 
     # Plotting with y on the x-axis and z on the y-axis
-    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=300)
+    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=1000)
 
     ax.set_title('Concentration')
     ax.set_xlabel('Latitude Index (y)')
@@ -519,7 +519,7 @@ def simulate_puff_concentration(source_x, source_y, source_z, grid_x, grid_y, gr
     # Wind data and interpolation
     WS_x = data['u_wind']
     WS_y = data['v_wind']
-    WA = data['wind_direction']
+    WA = np.radians(data['wind_direction'])
     WA_x = np.cos(WA)
     WA_y = np.sin(WA)
     WS = np.sqrt(WS_x**2 + WS_y**2)
@@ -640,11 +640,13 @@ def gplume(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA
     hypotenuse = np.sqrt(x1**2 + y1**2)  # distance to point x, y from stack
 
     # Distance along the wind direction to perpendicular line that intersects x, y
-    downwind = np.cos(subtended) * hypotenuse
+    downwind = x1 * WA_x + y1 * WA_y
 
     # Calculate crosswind distance
-    crosswind = np.sin(subtended) * hypotenuse
+    crosswind = x1 * WA_y - y1 * WA_x
     
+    print("Debug downwind distance", downwind[-3:-1, -1, -1], downwind[-3:-1, -1, -1], downwind[-3:-1, -1, -1],downwind[-3:-1, -1, -1])
+
     # Compute sigma_y and sigma_z based on stability class and downwind distance
     sigma_y, sigma_z = compute_sigma_vals(stab_class, downwind / 1000)  # Assuming distance is in meters, convert to kilometers for sigma calculation
     
