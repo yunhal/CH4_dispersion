@@ -251,6 +251,29 @@ def plot_2d_concentration(big_C, times):
             # Display the plot
             plt.show()
 
+            # Extract the center slice along the first dimension 
+            center_pt = big_C[t].shape[0] // 2
+            center_slice = big_C[center_pt,:, :, t]
+
+            print(center_slice.shape)  # Should print (20, 10)
+
+            # Create the plot
+            fig, ax = plt.subplots()
+
+            # Plotting with y on the x-axis and z on the y-axis
+            c = ax.imshow(center_slice.T, cmap=cmap, origin='lower', aspect='auto', vmin=0)
+
+            ax.set_title('Concentration at Source Location')
+            ax.set_xlabel('Latitude Index (y)')
+            ax.set_ylabel('Height Index (z)')
+
+            # Add a color bar
+            cbar = fig.colorbar(c, ax=ax)
+            cbar.set_label('Plume Concentration (ug m-3)')
+
+            # Display the plot
+            plt.show()
+
 def plot_2d_concentration_from_df(df):
     
     colors = ["white", "red"]  # white for low concentrations, red for high
@@ -409,17 +432,34 @@ def plot_2d_plume_concentration(big_C):
     fig, ax = plt.subplots()
 
     # Sum over the Z-axis (height dimension)
-    C_summed = np.sum(big_C, axis=2)
+    C_summed = np.mean(big_C, axis=2)
 
     # Create the heatmap
-    c = ax.imshow(C_summed, cmap=cmap, origin='lower', aspect='auto', vmin=0)
+    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=300)
     ax.set_title('Concentration')
     ax.set_xlabel('Longitude Index')
     ax.set_ylabel('Latitude Index')
 
     # Add a color bar
     cbar = fig.colorbar(c, ax=ax)
-    cbar.set_label('Plume Concentration (units)')
+    cbar.set_label('Plume Concentration (ug m-3)')
+
+    # Sum over the X (longitude dimension)
+    C_summed = np.mean(big_C, axis=0)
+
+    # Create the plot
+    fig, ax = plt.subplots()
+
+    # Plotting with y on the x-axis and z on the y-axis
+    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=300)
+
+    ax.set_title('Concentration')
+    ax.set_xlabel('Latitude Index (y)')
+    ax.set_ylabel('Height Index (z)')
+
+    # Add a color bar
+    cbar = fig.colorbar(c, ax=ax)
+    cbar.set_label('Plume Concentration (ug m-3)')
 
     # Display the plot
     plt.show()
@@ -507,18 +547,20 @@ def simulate_puff_concentration(source_x, source_y, source_z, grid_x, grid_y, gr
 def gpuff(Q, stab_class, x_p, y_p, x_r_vec, y_r_vec, z_r_vec, total_dist, H):
 
     """Calculate the contaminant concentration using the Gaussian puff model."""
-    conversion_factor = 1e6 * 1.524
     total_dist_km = total_dist / 1000
     sigma_y, sigma_z = compute_sigma_vals(stab_class, total_dist_km)
 
+    print("Debug gplume", sigma_y[-3:-1, -1, -1], sigma_z[-3:-1, -1, -1], total_dist[-3:-1, -1, -1], stab_class)
+
     #print("debug sigma",stab_class, sigma_y[10,10,10])
 
-    # Gaussian puff model calculation
+    # Gaussian puff model calculation (Total reflection at z =0)
     C = (Q / ((2 * np.pi) ** 1.5 * sigma_y ** 2 * sigma_z)) * \
         np.exp(-0.5 * ((x_r_vec - x_p) ** 2 + (y_r_vec - y_p) ** 2) / sigma_y ** 2) * \
         (np.exp(-0.5 * (z_r_vec - H) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + H) ** 2 / sigma_z ** 2))
 
-    # Convert from kg/m^3 to ppm
+    # Convert from kg/m^3 to ug/m^3
+    conversion_factor = 1e9 #  * 1.524
     C *= conversion_factor
 
     # Replace NAs (from zero total distance cases) with zeros
@@ -557,7 +599,7 @@ def process_chunk(args):
 
 def gplume_old(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA_y):
     """Calculate the contaminant concentration using the Gaussian plume model."""
-    conversion_factor = 1e6 * 1.524
+
     
     # Calculate the total distance in the downwind direction
     total_dist = np.sqrt((x_r_vec - x_p)**2 + (y_r_vec - y_p)**2)
@@ -565,14 +607,15 @@ def gplume_old(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x
     # Compute sigma_y and sigma_z based on stability class and distance
     sigma_y, sigma_z = compute_sigma_vals(stab_class, total_dist/1000)
     
-    print("Debug gplume", sigma_y.shape, sigma_z.shape, total_dist.shape)
+    print("Debug gplume", sigma_y[-3:-1, -1, -1], sigma_z[-3:-1, -1, -1], total_dist[-3:-1, -1, -1], stab_class)
 
     # Gaussian plume model calculation
     C = (Q / (2 * np.pi * WS * sigma_y * sigma_z)) * \
         np.exp(-0.5 * ((x_r_vec - x_p) ** 2 + (y_r_vec - y_p) ** 2) / sigma_y ** 2) * \
         (np.exp(-0.5 * (z_r_vec - z_p) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + z_p) ** 2 / sigma_z ** 2))
     
-    # Convert from kg/m^3 to ppm
+    # Convert from kg/m^3 to ug/m^3
+    conversion_factor = 1e9 #  * 1.524
     C *= conversion_factor
     
     # Replace NAs with zeros
@@ -582,7 +625,7 @@ def gplume_old(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x
 
 def gplume(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA_y):
     """Calculate the contaminant concentration using the Gaussian plume model."""
-    conversion_factor = 1e6 * 1.524
+
     
     # Shift coordinates according to wind direction
     x1 = x_r_vec - x_p 
@@ -605,14 +648,15 @@ def gplume(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA
     # Compute sigma_y and sigma_z based on stability class and downwind distance
     sigma_y, sigma_z = compute_sigma_vals(stab_class, downwind / 1000)  # Assuming distance is in meters, convert to kilometers for sigma calculation
     
-    print("Debug gplume", sigma_y.shape, sigma_z.shape, downwind, stab_class)
+    print("Debug gplume", sigma_y[-3:-1, -1, -1], sigma_z[-3:-1, -1, -1], downwind[-3:-1, -1, -1], stab_class)
 
     # Gaussian plume model calculation
     C = (Q / (2 * np.pi * WS * sigma_y * sigma_z)) * \
         np.exp(-0.5 * (crosswind ** 2) / sigma_y ** 2) * \
         (np.exp(-0.5 * (z_r_vec - z_p) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + z_p) ** 2 / sigma_z ** 2))
     
-    # Convert from kg/m^3 to ppm
+    # Convert from kg/m^3 to ug/m^3
+    conversion_factor = 1e9 #  * 1.524
     C *= conversion_factor
     
     # Replace NAs with zeros
@@ -627,6 +671,8 @@ def simulate_plume_concentration(source_x, source_y, source_z, grid_x, grid_y, g
     WS = np.sqrt(WS_x**2 + WS_y**2)
     WA_x = WS_x / WS
     WA_y = WS_y / WS
+
+
 
     # Emission rates
     Q_truth = emission_rate
