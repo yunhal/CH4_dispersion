@@ -4,6 +4,7 @@ __all__ = [
     'get_stab_class',
     'compute_sigma_vals',
     'gpuff',
+    'gplume',
     'process_chunk',
     'interpolate_wind_data',
     'plot_2d_concentration',
@@ -13,7 +14,9 @@ __all__ = [
     'calculate_end_time',
     'average_time_resolution',
     'convert_utm_to_latlon_df',
-    'simulate_puff_concentration'
+    'simulate_puff_concentration',
+    'simulate_plume_concentration',
+    'plot_2d_plume_concentration'
 ]
 
 
@@ -175,56 +178,6 @@ def compute_sigma_vals(stab_classes, total_dist):
     sigma_z_vals = sigma_z_accum / len(np.unique(stab_classes))
 
     return sigma_y_vals, sigma_z_vals
-
-def gpuff(Q, stab_class, x_p, y_p, x_r_vec, y_r_vec, z_r_vec, total_dist, H):
-
-    """Calculate the contaminant concentration using the Gaussian puff model."""
-    conversion_factor = 1e6 * 1.524
-    total_dist_km = total_dist / 1000
-    sigma_y, sigma_z = compute_sigma_vals(stab_class, total_dist_km)
-
-    #print("debug sigma",stab_class, sigma_y[10,10,10])
-
-    # Gaussian puff model calculation
-    C = (Q / ((2 * np.pi) ** 1.5 * sigma_y ** 2 * sigma_z)) * \
-        np.exp(-0.5 * ((x_r_vec - x_p) ** 2 + (y_r_vec - y_p) ** 2) / sigma_y ** 2) * \
-        (np.exp(-0.5 * (z_r_vec - H) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + H) ** 2 / sigma_z ** 2))
-
-    # Convert from kg/m^3 to ppm
-    C *= conversion_factor
-
-    # Replace NAs (from zero total distance cases) with zeros
-    C = np.where(np.isnan(C), 0, C)
-
-    return C
-
-def process_chunk(args):
-    h, chunk_size, dt, n_ints, source_x, source_y, source_z, WS_x, WS_y, WS, Q_truth, grid_x, grid_y, grid_z, times = args
-
-    chunk_start = int(h * chunk_size * 60 / dt)
-    chunk_end = int(min((h + 1) * chunk_size * 60 / dt, n_ints))
-    chunk_concentrations = np.zeros((chunk_end - chunk_start, grid_x.shape[0], grid_y.shape[1], grid_z.shape[2]))
-
-    print("check chunk_concentration dimensions", chunk_concentrations.shape, chunk_start,chunk_end)
-
-    for j in range(chunk_start, chunk_end):
-        current_time = times[0] + timedelta(seconds=(chunk_start + j) * dt)
-        stab_class = get_stab_class(WS.iloc[j], current_time)
-        #print("debug process_chunk", WS[j], current_time, stab_class)
-
-        for k in range(1, min(j - chunk_start, 300)+1):
-            puff_x = source_x + np.sum(WS_x[j-k:j] * dt)
-            puff_y = source_y + np.sum(WS_y[j-k:j] * dt)
-            total_dist = np.sqrt((grid_x - puff_x)**2 + (grid_y - puff_y)**2)
-
-            #print(f"in process_chunk, total_dist{total_dist[:2,:2, 0]},puff_x {puff_x}, source_x {source_x}, grid_x{grid_x[:1,:1,0]}, index{j, k, j}, wind{WS_x[j-k:j]},  Q{Q_truth[j]}" )
-
-            # Compute concentrations using the vectorized gpuff function
-            concentrations = gpuff(Q_truth[j], stab_class, puff_x, puff_y, grid_x, grid_y, grid_z, total_dist, source_z)
-            chunk_concentrations[j - chunk_start] += concentrations
-
-    return chunk_concentrations
-
 
 
 def plot_3d_concentration(big_C, times):
@@ -449,6 +402,27 @@ def plot_3d_concentration_with_slider(big_C, times):
 
     return fig
 
+def plot_2d_plume_concentration(big_C):
+    colors = ["white", "red"]  # white for low concentrations, red for high
+    cmap = LinearSegmentedColormap.from_list("custom_red", colors, N=256)
+    
+    fig, ax = plt.subplots()
+
+    # Sum over the Z-axis (height dimension)
+    C_summed = np.sum(big_C, axis=2)
+
+    # Create the heatmap
+    c = ax.imshow(C_summed, cmap=cmap, origin='lower', aspect='auto', vmin=0)
+    ax.set_title('Concentration')
+    ax.set_xlabel('Longitude Index')
+    ax.set_ylabel('Latitude Index')
+
+    # Add a color bar
+    cbar = fig.colorbar(c, ax=ax)
+    cbar.set_label('Plume Concentration (units)')
+
+    # Display the plot
+    plt.show()
 
 def average_time_resolution(big_C, times, output_dt_sec, output_dir,  grid_x, grid_y, grid_z):
 
@@ -529,3 +503,142 @@ def simulate_puff_concentration(source_x, source_y, source_z, grid_x, grid_y, gr
 
     big_C = np.vstack(results)
     return big_C
+
+def gpuff(Q, stab_class, x_p, y_p, x_r_vec, y_r_vec, z_r_vec, total_dist, H):
+
+    """Calculate the contaminant concentration using the Gaussian puff model."""
+    conversion_factor = 1e6 * 1.524
+    total_dist_km = total_dist / 1000
+    sigma_y, sigma_z = compute_sigma_vals(stab_class, total_dist_km)
+
+    #print("debug sigma",stab_class, sigma_y[10,10,10])
+
+    # Gaussian puff model calculation
+    C = (Q / ((2 * np.pi) ** 1.5 * sigma_y ** 2 * sigma_z)) * \
+        np.exp(-0.5 * ((x_r_vec - x_p) ** 2 + (y_r_vec - y_p) ** 2) / sigma_y ** 2) * \
+        (np.exp(-0.5 * (z_r_vec - H) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + H) ** 2 / sigma_z ** 2))
+
+    # Convert from kg/m^3 to ppm
+    C *= conversion_factor
+
+    # Replace NAs (from zero total distance cases) with zeros
+    C = np.where(np.isnan(C), 0, C)
+
+    return C
+
+
+def process_chunk(args):
+    h, chunk_size, dt, n_ints, source_x, source_y, source_z, WS_x, WS_y, WS, Q_truth, grid_x, grid_y, grid_z, times = args
+
+    chunk_start = int(h * chunk_size * 60 / dt)
+    chunk_end = int(min((h + 1) * chunk_size * 60 / dt, n_ints))
+    chunk_concentrations = np.zeros((chunk_end - chunk_start, grid_x.shape[0], grid_y.shape[1], grid_z.shape[2]))
+
+    print("check chunk_concentration dimensions", chunk_concentrations.shape, chunk_start,chunk_end)
+
+    for j in range(chunk_start, chunk_end):
+        current_time = times[0] + timedelta(seconds=(chunk_start + j) * dt)
+        stab_class = get_stab_class(WS.iloc[j], current_time)
+        #print("debug process_chunk", WS[j], current_time, stab_class)
+
+        for k in range(1, min(j - chunk_start, 300)+1):
+            puff_x = source_x + np.sum(WS_x[j-k:j] * dt)
+            puff_y = source_y + np.sum(WS_y[j-k:j] * dt)
+            total_dist = np.sqrt((grid_x - puff_x)**2 + (grid_y - puff_y)**2)
+
+            #print(f"in process_chunk, total_dist{total_dist[:2,:2, 0]},puff_x {puff_x}, source_x {source_x}, grid_x{grid_x[:1,:1,0]}, index{j, k, j}, wind{WS_x[j-k:j]},  Q{Q_truth[j]}" )
+
+            # Compute concentrations using the vectorized gpuff function
+            concentrations = gpuff(Q_truth[j], stab_class, puff_x, puff_y, grid_x, grid_y, grid_z, total_dist, source_z)
+            chunk_concentrations[j - chunk_start] += concentrations
+
+    return chunk_concentrations
+
+
+def gplume_old(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA_y):
+    """Calculate the contaminant concentration using the Gaussian plume model."""
+    conversion_factor = 1e6 * 1.524
+    
+    # Calculate the total distance in the downwind direction
+    total_dist = np.sqrt((x_r_vec - x_p)**2 + (y_r_vec - y_p)**2)
+    
+    # Compute sigma_y and sigma_z based on stability class and distance
+    sigma_y, sigma_z = compute_sigma_vals(stab_class, total_dist/1000)
+    
+    print("Debug gplume", sigma_y.shape, sigma_z.shape, total_dist.shape)
+
+    # Gaussian plume model calculation
+    C = (Q / (2 * np.pi * WS * sigma_y * sigma_z)) * \
+        np.exp(-0.5 * ((x_r_vec - x_p) ** 2 + (y_r_vec - y_p) ** 2) / sigma_y ** 2) * \
+        (np.exp(-0.5 * (z_r_vec - z_p) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + z_p) ** 2 / sigma_z ** 2))
+    
+    # Convert from kg/m^3 to ppm
+    C *= conversion_factor
+    
+    # Replace NAs with zeros
+    C = np.where(np.isnan(C), 0, C)
+    
+    return C
+
+def gplume(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA_y):
+    """Calculate the contaminant concentration using the Gaussian plume model."""
+    conversion_factor = 1e6 * 1.524
+    
+    # Shift coordinates according to wind direction
+    x1 = x_r_vec - x_p 
+    y1 = y_r_vec - y_p
+
+    # Scalar product for angle calculation
+    dot_product = x1* WA_x +  y1* WA_y
+    magnitudes = WS * np.sqrt(x1**2 + y1**2)  # product of magnitude of vectors
+
+    # Angle between wind and point (x, y)
+    subtended = np.arccos(dot_product / (magnitudes + 1e-15))
+    hypotenuse = np.sqrt(x1**2 + y1**2)  # distance to point x, y from stack
+
+    # Distance along the wind direction to perpendicular line that intersects x, y
+    downwind = np.cos(subtended) * hypotenuse
+
+    # Calculate crosswind distance
+    crosswind = np.sin(subtended) * hypotenuse
+    
+    # Compute sigma_y and sigma_z based on stability class and downwind distance
+    sigma_y, sigma_z = compute_sigma_vals(stab_class, downwind / 1000)  # Assuming distance is in meters, convert to kilometers for sigma calculation
+    
+    print("Debug gplume", sigma_y.shape, sigma_z.shape, downwind, stab_class)
+
+    # Gaussian plume model calculation
+    C = (Q / (2 * np.pi * WS * sigma_y * sigma_z)) * \
+        np.exp(-0.5 * (crosswind ** 2) / sigma_y ** 2) * \
+        (np.exp(-0.5 * (z_r_vec - z_p) ** 2 / sigma_z ** 2) + np.exp(-0.5 * (z_r_vec + z_p) ** 2 / sigma_z ** 2))
+    
+    # Convert from kg/m^3 to ppm
+    C *= conversion_factor
+    
+    # Replace NAs with zeros
+    C = np.where(np.isnan(C), 0, C)
+    
+    return C
+
+def simulate_plume_concentration(source_x, source_y, source_z, grid_x, grid_y, grid_z, data, emission_rate, times):
+    #  Assuming single, average wind speed for simplicity
+    WS_x = data['u_wind'].mean() 
+    WS_y = data['v_wind'].mean()
+    WS = np.sqrt(WS_x**2 + WS_y**2)
+    WA_x = WS_x / WS
+    WA_y = WS_y / WS
+
+    # Emission rates
+    Q_truth = emission_rate
+    
+    # Compute stability class for the entire simulation (Assume constant stability class for simplicity)
+    stab_class = get_stab_class(WS, times[0]) 
+
+    print("Debug plume", WS, stab_class)
+    
+    # Compute concentrations using the Gaussian Plume model
+    concentrations = gplume(Q_truth, stab_class, source_x, source_y, source_z, grid_x, grid_y, grid_z, WS, WA_x, WA_y)
+    
+    print("Debug plume 2", concentrations.shape)
+
+    return concentrations
