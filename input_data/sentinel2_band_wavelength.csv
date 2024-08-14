@@ -1,0 +1,14 @@
+,Band,Wavelength Range (nm),Resolution (m),Description,Wavelength_start,Wavelength_end,CH4_AC
+0,1,433 – 453,60,Coastal Aerosol,433,453,0.0
+1,2,458 – 523,10,Blue,458,523,0.0
+2,3,543 – 578,10,Green,543,578,0.0
+3,4,650 – 680,10,Red,650,680,0.0
+4,5,698 – 713,20,Red Edge 1,698,713,0.0
+5,6,733 – 748,20,Red Edge 2,733,748,0.0
+6,7,773 – 793,20,Red Edge 3,773,793,0.0
+7,8,785 – 900,10,Near Infrared (NIR),785,900,0.0
+8,8a,855 – 875,20,Narrow Near Infrared (NIR),855,875,0.0
+9,9,930 – 950,60,Water Vapor,930,950,0.0
+10,10,1360 – 1390,60,Shortwave Infrared - Cirrus,1360,1390,-0.000432474376209325
+11,11,1565 – 1655,20,Shortwave Infrared (SWIR) 1,1565,1655,-0.03774153778498048
+12,12,2100 – 2280,20,Shortwave Infrared (SWIR) 2,2100,2280,-0.26417167836000444
