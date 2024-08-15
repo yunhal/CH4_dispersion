@@ -1,10 +1,14 @@
 __all__ = [
-    'latlon_to_utm',
     'get_stab_class',
     'compute_sigma_vals',
     'gplume',
-    'convert_utm_to_latlon_df',
-    'plot_2d_plume_concentration'
+    'plot_2d_plume_concentration',
+    'run_simulation',
+    'apply_noise',
+    'compute_mean_concentration',
+    'generate_wind_directions',
+    'create_grid'
+
 ]
 
 
@@ -20,113 +24,66 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import LinearSegmentedColormap
 from multiprocessing import Pool
-
-def convert_utm_to_latlon_df(df, easting_col, northing_col, zone, northern=True):
-    # Create a Transformer object for UTM to WGS84 conversion
-    hemisphere = 'north' if northern else 'south'
-    transformer = Transformer.from_proj(
-        proj_from=f"+proj=utm +zone={zone}, +{hemisphere} +ellps=WGS84 +datum=WGS84 +units=m +no_defs",
-        proj_to="epsg:4326",  # WGS84
-        always_xy=True
-    )
-
-    df['lon'], df['lat'] = transformer.transform(df[easting_col].to_numpy(), df[northing_col].to_numpy())
-    return df
-
-
-def latlon_to_utm(latitude, longitude):
-    # Define the geographic coordinate system WGS 84
-    wgs84 = CRS('EPSG:4326')
-    
-    # Determine the UTM zone
-    zone_number = int((longitude + 180) // 6) + 1
-    hemisphere = 'north' if latitude >= 0 else 'south'
-    
-    # Define the UTM CRS based on the zone and hemisphere
-    utm_crs = CRS(proj='utm', zone=zone_number, datum='WGS84', south=(hemisphere == 'south'))
-    project = Proj(utm_crs)
-    easting, northing = project(longitude, latitude)
-    
-    zone_letter = 'N' if latitude >= 0 else 'S'
-
-    return easting, northing # , int(zone_number), zone_letter
-
+import os
+from scipy.special import erfcinv
+from scipy.ndimage import gaussian_filter
 
 def get_stab_class(U, day_time, solar_radiation=None, cloud_cover_fraction=None):
     """
-    Determine stability class based on wind speed, time of day, 
-    incoming solar radiation during the daytime, and cloud cover fraction during nighttime.
-    
-    Parameters:
-        U (float): Wind speed in m/s.
-        day_time (bool): True if it's daytime, False if it's nighttime.
-        solar_radiation (str): Incoming solar radiation during daytime ('strong', 'moderate', 'weak').
-        cloud_cover_fraction (str): Cloud cover fraction during nighttime ('low', 'moderate', 'high').
-        
-    Returns:
-        str: Stability class.
+    Determine stability class based on wind speed, time of day, incoming solar radiation during the daytime, and cloud cover fraction during nighttime.
     """
     if day_time:
         if solar_radiation == 'strong':
             if U < 2:
-                return "A"
+                return ["A"]
             elif 2 <= U < 3:
-                return "B"
+                return ["A", "B"]
             elif 3 <= U < 5:
-                return "B"
-            elif 5 <= U < 6:
-                return "C"
-            else:
-                return "D"
+                return ["B"]
+            else: #5 <= U 
+                return ["C"]
+
         elif solar_radiation == 'moderate':
             if U < 2:
-                return "B"
+                return ["A", "B"]
             elif 2 <= U < 3:
-                return "C"
+                return ["B"]
             elif 3 <= U < 5:
-                return "C"
+                return ["B", "C"]
             elif 5 <= U < 6:
-                return "D"
+                return ["C", "D"]
             else:
-                return "D"
+                return ["D"]
         elif solar_radiation == 'weak':
             if U < 2:
-                return "C"
-            elif 2 <= U < 3:
-                return "C"
-            elif 3 <= U < 5:
-                return "D"
-            elif 5 <= U < 6:
-                return "D"
-            else:
-                return "D"
+                return ["B"]
+            elif 2 <= U < 5:
+                return ["C"]
+            else: # 5 <= U < 6:
+                return ["D"]
     else:
         if cloud_cover_fraction == 'low':
-            if U < 2:
-                return "F"
-            elif 2 <= U < 3:
-                return "F"
+            if U < 3:
+                return ["F"]
             elif 3 <= U < 5:
-                return "E"
+                return ["E"]
             elif 5 <= U < 6:
-                return "D"
+                return ["D"]
             else:
-                return "D"
+                return ["D"]
         elif cloud_cover_fraction == 'high':
             if U < 2:
-                return "E"
+                return ["E"]
             elif 2 <= U < 3:
-                return "E"
-            elif 3 <= U < 5:
-                return "D"
-            elif 5 <= U < 6:
-                return "D"
-            else:
-                return "D"
-
+                return ["E"]
+            else: # 3 <= U :
+                return ["D"]
 
 
 def compute_sigma_vals(stab_classes, total_dist):
+    """
+    Compute disperson coefficients (horizontal and vertical)  based on the Pasquill stability classes
+    """
     # Initialize arrays for sigma values
     sigma_y_vals = np.zeros_like(total_dist)
     sigma_z_vals = np.zeros_like(total_dist)
@@ -190,10 +147,14 @@ def compute_sigma_vals(stab_classes, total_dist):
             else:
                 mask = (total_dist > params[stab_class][i - 1][0]) & (total_dist <= limit) 
             #print(mask, limit, total_dist)
-            if np.any(mask):
-                big_theta = 0.017453293 * (c - d * np.log(total_dist[mask]))
-                class_sigma_y[mask] = 465.11628 * total_dist[mask] * np.tan(big_theta)
-                class_sigma_z[mask] = np.minimum(a * (total_dist[mask] ** b), 5000)
+
+            # Apply the mask and ensure no invalid values are passed to log and power functions
+            valid_mask = mask & (total_dist > 0)  # Ensure total_dist > 0 to avoid log and power issues
+
+            if np.any(valid_mask):
+                big_theta = 0.017453293 * (c - d * np.log(total_dist[valid_mask]))  # Log is safe here
+                class_sigma_y[valid_mask] = 465.11628 * total_dist[valid_mask] * np.tan(big_theta)
+                class_sigma_z[valid_mask] = np.minimum(a * np.power(total_dist[valid_mask], b), 5000)
 
         # Accumulate computed values
         sigma_y_accum += class_sigma_y
@@ -208,51 +169,56 @@ def compute_sigma_vals(stab_classes, total_dist):
 
 
 
-def plot_2d_plume_concentration(big_C, plot_title):
-    colors = ["white", "red"]  # white for low concentrations, red for high
+def plot_2d_plume_concentration(big_C, plot_title, output_dir):
+    """
+    Plot and save the averaged CH4 concentrations 
+    """
+    # Convert big_C unit from [ug m^-3] to [ppm]
+    big_C = big_C / 714.6
+
+    colors = ["white", "red"]  # White for low concentrations, red for high
     cmap = LinearSegmentedColormap.from_list("custom_red", colors, N=256)
     
-    fig, ax = plt.subplots()
+    fig, axs = plt.subplots(1, 2, figsize=(14, 6)) 
+    
+    #Sum over the Z-axis (height dimension)
+    C_summed_z = np.mean(big_C, axis=2)
+    c1 = axs[0].imshow(C_summed_z.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=10)
+    axs[0].set_title(f'{plot_title}')
+    axs[0].set_xlabel('Longitude Index (x)')
+    axs[0].set_ylabel('Latitude Index (y)')
+    cbar1 = fig.colorbar(c1, ax=axs[0])
+    cbar1.set_label('Plume Concentration (ppm)')
+    
+    # um over the X-axis (longitude dimension)
+    C_summed_x = np.mean(big_C, axis=0)
+    c2 = axs[1].imshow(C_summed_x.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=10)
+    axs[1].set_title(f'{plot_title}')
+    axs[1].set_xlabel('Latitude Index (y)')
+    axs[1].set_ylabel('Height Index (z)')
+    cbar2 = fig.colorbar(c2, ax=axs[1])
+    cbar2.set_label('Plume Concentration (ppm)')
+    
+    # Adjust layout to avoid overlap
+    plt.tight_layout()
 
-    # Sum over the Z-axis (height dimension)
-    C_summed = np.mean(big_C, axis=2)
+    # Save the plot
+    plt.savefig(os.path.join(output_dir, plot_title + ".png"))
+    
+    # Show the plot (remove if running in a non-interactive environment)
+    # plt.show()
 
-    # Create the heatmap
-    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=1000)
-    ax.set_title(plot_title)
-    ax.set_xlabel('Longitude Index')
-    ax.set_ylabel('Latitude Index')
+    # Close the figure to free memory
+    plt.close(fig)
 
-    # Add a color bar
-    cbar = fig.colorbar(c, ax=ax)
-    cbar.set_label('Plume Concentration (ug m-3)')
-
-    # Sum over the X (longitude dimension)
-    C_summed = np.mean(big_C, axis=0)
-
-    # Create the plot
-    fig, ax = plt.subplots()
-
-    # Plotting with y on the x-axis and z on the y-axis
-    c = ax.imshow(C_summed.T, cmap=cmap, origin='lower', aspect='auto', vmin=0, vmax=1000)
-
-    ax.set_title(plot_title)
-    ax.set_xlabel('Latitude Index (y)')
-    ax.set_ylabel('Height Index (z)')
-
-    # Add a color bar
-    cbar = fig.colorbar(c, ax=ax)
-    cbar.set_label('Plume Concentration (ug m-3)')
-
-    # Display the plot
-    plt.show()
 
 
 
 def gplume(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA_y):
-    """Calculate the contaminant concentration using the Gaussian plume model."""
+    """
+    Calculate the CH4 concentrations using the Gaussian plume model.
+    """
 
-    
     # Shift coordinates according to wind direction
     x1 = x_r_vec - x_p 
     y1 = y_r_vec - y_p
@@ -292,3 +258,96 @@ def gplume(Q, stab_class, x_p, y_p, z_p, x_r_vec, y_r_vec, z_r_vec, WS, WA_x, WA
     
     return C
 
+def create_grid(dxy, dz, num_xygrid, num_zgrid):
+    """
+    Create a 3D grid using the given resolution
+    """
+    grid_x, grid_y, grid_z = np.meshgrid(
+        np.arange(-dxy * num_xygrid/3, dxy * num_xygrid/3*2, dxy),  # X-axis grid
+        np.arange(-dxy * num_xygrid/3, dxy * num_xygrid/3*2, dxy),  # Y-axis grid
+        np.arange(0, dz * num_zgrid, dz),  # Z-axis grid
+        indexing='ij'
+    )
+    return grid_x, grid_y, grid_z
+
+
+def generate_wind_directions(WD_mean, spread, days):
+    """
+    Generate random wind directions based on a mean direction and spread.
+    """
+    wind_dir = WD_mean + spread * np.sqrt(2.) * erfcinv(2. * np.random.rand(24 * days, 1))
+    return np.mod(wind_dir, 360)  # Ensure within 0-360 degrees
+
+
+def compute_mean_concentration(grid_x, grid_y, grid_z, initial_Q, stack_x, stack_y, H, wind_speed, wind_dir, stab_class):
+    """
+    Compute the CH4 mean concentration over all wind directions
+    """
+    big_C = np.zeros((grid_x.shape[0], grid_y.shape[1], grid_z.shape[2], len(wind_dir)))
+
+    for i in range(len(wind_dir)):
+        wind_direction = wind_dir[i, 0]
+        WA = np.radians(wind_direction)
+        WA_x, WA_y = np.cos(WA), np.sin(WA)
+
+        concentrations = gplume(initial_Q, stab_class, stack_x, stack_y, 
+                                H, grid_x, grid_y, grid_z, wind_speed, WA_x, WA_y)
+        big_C[:, :, :, i] += concentrations  # ug/m3 
+
+    mean_conc = np.mean(big_C, axis=3)
+    return mean_conc
+
+
+def apply_noise(mean_conc, noise_level_multiplier=2, sigma=[1, 1, 1]):
+    """
+    Apply Gaussian noise to the mean concentration to simulate atmospheric turbulence
+    """
+    noise_level = mean_conc.mean() * noise_level_multiplier
+    white_noise = np.random.normal(0, noise_level, mean_conc.shape)
+    noise = gaussian_filter(white_noise, sigma=sigma)
+    return mean_conc + noise
+
+
+# Run the Gaussian plume simulation
+def run_simulation(output_dir, dxy, dz, num_xygrid, num_zgrid, days, mean_wind_directions,
+                   direction_spreads, day_or_night, incoming_solar_radiations, cloud_covers,
+                   stack_x, stack_y, initial_Q, H, plotting_on=False):
+
+    """
+    Main function to compute CH4 concentrations using Gaussian Plume Model
+    """
+    grid_x, grid_y, grid_z = create_grid(dxy, dz, num_xygrid, num_zgrid)
+    print("Grid dimensions:", grid_x.shape, grid_y.shape, grid_z.shape)
+
+    for s in range(len(H)):
+        for wind_speed in [1.5, 4, 6.5]:
+            rough_steady_state_time = num_xygrid * dxy / np.sqrt(wind_speed)
+            print(f"Steady state in ~{rough_steady_state_time} seconds")
+
+            for WD_mean in mean_wind_directions:
+                for spread in direction_spreads:
+                    wind_dir = generate_wind_directions(WD_mean, spread, days)
+
+                    for day_time in day_or_night:
+                        for incoming_solar_radiation in incoming_solar_radiations:
+                            for cloud_cover in cloud_covers:
+                                stab_class = get_stab_class(wind_speed, day_time, 
+                                                            solar_radiation=incoming_solar_radiation, 
+                                                            cloud_cover_fraction=cloud_cover)
+
+                                print(f"H_{H[s]}, WS_{wind_speed}, stability_{stab_class}, WD_{WD_mean}, spread_{spread}, radiaton_{incoming_solar_radiation}")
+
+                                mean_conc = compute_mean_concentration(grid_x, grid_y, grid_z, initial_Q, 
+                                                                       stack_x[s], stack_y[s], H[s], 
+                                                                       wind_speed, wind_dir, stab_class)
+               
+                                mean_conc = apply_noise(mean_conc) # Overwrite the same variable to reduce RAM usage 
+
+                                file_name = f"gplume_output_WS_{wind_speed}_stackH_{H[s]}_stability_{stab_class}_radiaton_{incoming_solar_radiation}_WD_{WD_mean}_spread_{spread}.npy"
+                                np.save(os.path.join(output_dir, file_name), mean_conc)
+
+                                if plotting_on:
+                                    plot_2d_plume_concentration(mean_conc, 
+                                        f"Noisy_WS_{wind_speed}_stackH_{H[s]}_radiaton_{incoming_solar_radiation}_stability_{stab_class}_WD_spread_{spread}", output_dir)
+
+    print("Simulation completed.")

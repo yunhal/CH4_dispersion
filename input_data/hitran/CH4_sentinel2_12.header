@@ -1,5 +1,5 @@
 {
-  "table_name": "H2O",
+  "table_name": "CH4_sentinel2_12",
   "number_of_rows": -1,
   "format": {
     "a": "%10.3E",
