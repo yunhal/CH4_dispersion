@@ -22,12 +22,12 @@ Gaussian CH4 Modeling is a Python-based tool designed to simulate methane concen
 Gaussian_CH4_Modeling/
 ├── input_data/                    # Directory for storing input data (e.g., HITRAN data)
 
-├── output_data/                   # Output directory for simulation results (not included in the gitrepo)
+├── output_data/                   # Directory for outputs (not included in the gitrepo)
 │   ├── gplume_conc/               # Output concentration fields
 │   └── gplume_transmit/           # Calculated transmittance files
 
 ├── code/                          # Source code for the project
-│   ├── main.py                    # Main script to run the Gaussian Plume model and compute CH4 transmittance using HITRAN database
+│   ├── main.py                    # Main script to generate various synthetic gaussian Plume and compute CH4 transmittance using HITRAN database
 │   ├── gaussian_plume_functions.py  # Functions related to Gaussian plume modeling
 │   ├── ch4_optics_functions.py    # Functions for CH4 transmittance calculations
 │   ├── hapi.py                    # HITRAN python script
