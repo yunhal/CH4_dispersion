@@ -36,6 +36,7 @@ Gaussian_CH4_Modeling/
 
 ├── requirements.txt               # Python dependencies  (not included yet)
 └── README.md                      # Project README file
+└── NEI_CH4                        # Python code to read CH4 emissions from NEI database
 
 ```
 
