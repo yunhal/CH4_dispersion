@@ -15,6 +15,8 @@ Gaussian CH4 Modeling is a Python-based tool designed to simulate methane concen
 - **Customizable Parameters:** Easily adjust grid parameters, wind direction, stability classes, source parameters, and more.
 - **Multiprocessor Processing:** Utilize multiprocessors for the Gaussian Puff model to speed up the calculations.
 
+## Note 
+Initially, this repository was forked to begin CH4 dispersion modeling with the Gaussian Puff model from the wsdaniels/DLQ repository. However, as the project evolved, it became significantly different from the original. Therefore, I have detached the fork history.
 
 ## Project Structure
 
