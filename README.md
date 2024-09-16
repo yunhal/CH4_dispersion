@@ -1,6 +1,6 @@
 # Gaussian CH4 Modeling
 
-**A Python-based modeling tool for simulating methane plume dispersion using Gaussian Puff or Plume models and calculating the transmittance of atmospheric methane using HITRAN data (only for plume model).**
+**A Python-based modeling tool for simulating methane plume dispersion using Gaussian Puff or Plume models and calculating the transmittance of atmospheric methane using HITRAN data.**
 
 
 ## Introduction
