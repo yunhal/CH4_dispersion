@@ -263,8 +263,8 @@ def create_grid(dxy, dz, num_xygrid, num_zgrid):
     Create a 3D grid using the given resolution
     """
     grid_x, grid_y, grid_z = np.meshgrid(
-        np.arange(-dxy * num_xygrid/3, dxy * num_xygrid/3*2, dxy),  # X-axis grid
-        np.arange(-dxy * num_xygrid/3, dxy * num_xygrid/3*2, dxy),  # Y-axis grid
+        np.arange(-dxy * num_xygrid/5, dxy * num_xygrid/5*4, dxy),  # X-axis grid
+        np.arange(-dxy * num_xygrid/5, dxy * num_xygrid/5*4, dxy),  # Y-axis grid
         np.arange(0, dz * num_zgrid, dz),  # Z-axis grid
         indexing='ij'
     )
@@ -273,9 +273,14 @@ def create_grid(dxy, dz, num_xygrid, num_zgrid):
 
 def generate_wind_directions(WD_mean, spread, days):
     """
-    Generate random wind directions based on a mean direction and spread.
+    Generate wind directions based on a mean direction and spread.
     """
-    wind_dir = WD_mean + spread * np.sqrt(2.) * erfcinv(2. * np.random.rand(24 * days, 1))
+    # Create random wind directions based on a mean direction and spread (This approach could lead to split plume)
+    #wind_dir = WD_mean + spread * np.sqrt(2.) * erfcinv(2. * np.random.rand(24 * days, 1))
+
+    # Create a linearly spaced array to cover the range uniformly
+    wind_dir = np.linspace(WD_mean - spread, WD_mean + spread, 24 * days).reshape(-1, 1)
+
     return np.mod(wind_dir, 360)  # Ensure within 0-360 degrees
 
 
@@ -341,13 +346,13 @@ def run_simulation(output_dir, dxy, dz, num_xygrid, num_zgrid, days, mean_wind_d
                                                                        stack_x[s], stack_y[s], H[s], 
                                                                        wind_speed, wind_dir, stab_class)
                
-                                mean_conc = apply_noise(mean_conc) # Overwrite the same variable to reduce RAM usage 
+                                #mean_conc = apply_noise(mean_conc) # Overwrite the same variable to reduce RAM usage 
 
                                 file_name = f"gplume_output_WS_{wind_speed}_stackH_{H[s]}_stability_{stab_class}_radiaton_{incoming_solar_radiation}_WD_{WD_mean}_spread_{spread}.npy"
                                 np.save(os.path.join(output_dir, file_name), mean_conc)
 
                                 if plotting_on:
                                     plot_2d_plume_concentration(mean_conc, 
-                                        f"Noisy_WS_{wind_speed}_stackH_{H[s]}_radiaton_{incoming_solar_radiation}_stability_{stab_class}_WD_spread_{spread}", output_dir)
+                                        f"WS_{wind_speed}_stackH_{H[s]}_radiaton_{incoming_solar_radiation}_stability_{stab_class}_WD_spread_{spread}", output_dir)
 
     print("Simulation completed.")

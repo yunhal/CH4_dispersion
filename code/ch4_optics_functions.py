@@ -74,15 +74,27 @@ def calculate_transmittance_for_concentration(mean_conc, Q_target, satellite, hi
             convert_unit = Avogadro / ch4_molar_weight / 1e4
             abs_coef = abs_coef.astype(np.float32) * convert_unit
 
+            # Mean of the absorption coefficient
+            absorption_mean = abs_coef.mean()
+
             # Calculate extinction and transmittance
-            total_extinction = np.sum(mean_conc_scaled[:, :, :, np.newaxis] * dz * abs_coef, axis=2, dtype=np.float32)
+            total_extinction = np.sum(mean_conc_scaled[:, :, :] * dz * absorption_mean, axis=2, dtype=np.float32)
 
             # Calculate total transmittance based on Beer-Lambert Law
-            final_transmittance = np.exp(-np.mean(total_extinction, axis=-1, dtype=np.float32), dtype=np.float32)
+            # final_transmittance = np.exp(-np.mean(total_extinction, axis=-1, dtype=np.float32), dtype=np.float32)
+            final_transmittance = np.exp(-total_extinction, dtype=np.float32)
 
             # Save output
             with h5py.File(os.path.join(output_dir, file_name), 'w') as hf:
                 hf.create_dataset('CH4 transmittance', data=final_transmittance)
+
+def scale_transmittance(final_transmittance, Q_target_old, Q_target_new):
+    scaling_factor = Q_target_new / Q_target_old
+    
+    # Scale the transmittance
+    final_transmittance_new = final_transmittance ** scaling_factor
+    
+    return final_transmittance_new
 
 def process_concentration_files(conc_dir, Q_targets, satellites, hitran_data_dir, output_dir, dz):
     """

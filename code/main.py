@@ -13,13 +13,13 @@ def main():
     # grid parameters
     dxy = 20
     dz = 20
-    num_xygrid = 125 # 2.5 km x 2.5 km
+    num_xygrid = 250 # 2.5 km x 2.5 km
     num_zgrid = 100 # 2 km (to cover the day-time planetary boundary layer, which goes up to 1-2 km)
 
     # wind direction parameters
     days = 5 # only affect the wind directions data generation
-    mean_wind_directions = [20]
-    direction_spreads = [25, 40]
+    mean_wind_directions = [45]
+    direction_spreads = [15, 30, 45]
 
     # stability parameters
     day_or_night = [True]
@@ -37,8 +37,8 @@ def main():
 
     # Run the Gaussian plume simulation
     run_simulation(output_dir, dxy, dz, num_xygrid, num_zgrid, days, mean_wind_directions,
-                   direction_spreads, day_or_night, incoming_solar_radiations, cloud_covers,
-                   stack_x, stack_y, initial_Q, H, plotting_on)
+                    direction_spreads, day_or_night, incoming_solar_radiations, cloud_covers,
+                    stack_x, stack_y, initial_Q, H, plotting_on)
 
     # Configuration for accessing the HITRAN database
     os.environ['GLOBAL_HOST'] = 'http://hitran.org'
@@ -46,7 +46,7 @@ def main():
 
     # Constants for transmittance calculation
     satellites = ["sentinel2"]  # List of satellites
-    hitran_data_dir = "/Users/yunhalee/Documents/methanDart/Gaussian_Puff_CH4/input_data/hitran"
+    hitran_data_dir = "/Users/yunhalee/Documents/methanDart/Gaussian_CH4_Modeling/input_data/hitran"
     output_dir = "../output_data/gplume_transmit/"
     conc_dir = "../output_data/gplume_conc/"
 
@@ -55,7 +55,7 @@ def main():
         fetch_hitran_data(satellite, hitran_data_dir)
 
     # Process concentration files and calculate/save transmittance
-    Q_targets = [7000, 10000]  # kg/hr
+    Q_targets = [10000]  # kg/hr
     process_concentration_files(conc_dir, Q_targets, satellites, hitran_data_dir, output_dir, dz)
 
     print("Processing completed.")
