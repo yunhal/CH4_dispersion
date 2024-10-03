@@ -35,7 +35,6 @@ Gaussian_CH4_Modeling/
 │   ├── hapi.py                    # HITRAN python script
 │   ├── compare_ch4_absorption_data.ipynb     # Compare HITRAN-based absorption coef and the values obtained from satellite retrieval data
 │   └── gaussian_puff_and_plume_models.ipynb  # Main script that runs Gaussian Puff and Plume models
-
 ├── requirements.txt               # Python dependencies  (not included yet)
 └── README.md                      # Project README file
 └── NEI_CH4                        # Python code to read CH4 emissions from NEI database
@@ -44,6 +43,11 @@ Gaussian_CH4_Modeling/
 
 ## License and Contact Information
 
-This project is licensed under the MIT License - see the LICENSE file for details
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-Created by Yunha Lee. For any questions or suggestions, feel free to reach out or submit an issue on GitHub.
+For any questions or further information regarding this repository, feel free to reach out:
+
+**Yunha Lee**  
+**Research Scientist**  
+**Carbon Solutions**  
+Email: [yunha.lee@carbonsolutionsllc.com](mailto:yunha.lee@carbonsolutionsllc.com)
